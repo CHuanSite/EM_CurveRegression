@@ -17,13 +17,15 @@ library(tidyverse)
 
 ```{r}
 ## N is the number of total points on the image
-N = 300
+N = 30
 
 ## K is the number of total points on the curve 
-K = 30
+K = 300
 
 ## The parameterization of the curve 
 w <- seq(0, 2 * pi, by = 2 * pi / K)
+
+degree_free = 4
 
 ## Generate of the Curve
 X = 0
@@ -36,12 +38,26 @@ z.para = runif(1, -1, 1)
 x = NULL
 y = NULL
 z = NULL
+
+## Basis for the spline
+w <- seq(0, 2 * pi, by = 2 * pi / K)
+B = bs(w, df = degree_free)
   
 ## Curve Generation with Spiral
 coeff = runif(1, -2, 2)
 X = X + x.para * w * sin(coeff * w)
 Y = Y + y.para * w * cos(coeff * w)
 Z = Z + z.para * w
+
+
+# ## Generate the coefficients for the splines
+# x.coeff = runif(degree_free, -1, 1)
+# y.coeff = runif(degree_free, -1, 1)
+# z.coeff = runif(degree_free, -1, 1)
+# X = B %*% x.coeff
+# Y = B %*% y.coeff
+# Z = B %*% z.coeff
+
 
 for(k in 1 : K){
     x = c(x, X[k] + rnorm(10, 0, 0.1))
@@ -55,42 +71,38 @@ plot(x,y)
 ```{r}
 ## PI is the matrix of p_ik
 PI = matrix(1 / K, nrow = N, ncol = K)
-PI_sum = rep(1 / K, K)
+PI_sum_old = rep(1 / K, K)
 
 ## sigma is the variance of the noise in the gaussian distribution
-sigma = 1
+sigma_old = 1
 
 ## beta_x and beta_y are the coefficients for the splines to the x-axis and y-axis
-degree_free = 8
-beta_x = runif(degree_free, 0, 1)
-beta_y = runif(degree_free, 0, 1)
+beta_x_old = runif(degree_free, -10, 10)
+beta_y_old = runif(degree_free, -10, 10)
 
-## Basis for the spline
-w <- seq(0, 2 * pi, by = 2 * pi / K)
-B = bs(w, df = degree_free)
-
-for(t in 1 : 100){
+likelihood_store = c()
+## The procedure of the EM-Algorithm
+for(t in 1 : 300){
   ## E-step
   for(i in 1 : N){
     for(k in 1 : K){
-      PI[i,k] = exp(-1 / (2 * sigma) * (x[i] - B[k, ] %*% beta_x) ^ 2 + (y[i] - B[k, ] %*%   beta_y)^ 2) * PI_sum[k]
+      PI[i,k] = exp(-1 / (2 * sigma_old) * ((x[i] - B[k, ] %*% beta_x_old) ^ 2 + (y[i] - B[k, ] %*%   beta_y_old)^ 2)) * PI_sum_old[k]
     }
     PI = PI / apply(PI, 1, sum)
   }
 
   ## M-step
   ## Update PI_sum
-  PI_sum = 1 / N * apply(PI, 2, sum)
+  PI_sum_new = 1 / N * apply(PI, 2, sum)
 
   ## Update sigma
   sigma_temp = 0
   for(i in 1 : N){
-    for(j in 1 : K){
-      sigma_temp = sigma_temp + ((x[i] - B[k, ] %*% beta_x)^2 + (y[i] - B[k, ] %*% beta_y)^2) * PI[i,k]
+    for(k in 1 : K){
+      sigma_temp = sigma_temp + ((x[i] - B[k, ] %*% beta_x_old)^2 + (y[i] - B[k, ] %*% beta_y_old)^2) * PI[i,k]
     }
   }
-  sigma_temp = sigma_temp / N
-  sigma = sigma_temp
+  sigma_new = sigma_temp / (2 * N)
 
   ## Update beta_x and beta_y
   X = c()
@@ -105,19 +117,31 @@ for(t in 1 : 100){
       B_Y = rbind(B_Y, B[k, ] * sqrt(PI[i, k]))
     }
   }
-  beta_x  = solve(t(B_X) %*% B_X) %*% t(B_X) %*% X
-  beta_y  = solve(t(B_Y) %*% B_Y) %*% t(B_Y) %*% Y
-
+  beta_x_new  = solve(t(B_X) %*% B_X + 0.01 * diag(degree_free)) %*% t(B_X) %*% X
+  beta_y_new  = solve(t(B_Y) %*% B_Y + 0.01 * diag(degree_free)) %*% t(B_Y) %*% Y
+  #print(sigma)
+  
 ## Computation of the log likelihood
-index_max = apply(PI, 1, which.max)
-log_likelihood = -N / 2 * log(sigma)
+likelihood = 1
 for(i in 1 : N){
-  log_likelihood = log_likelihood - ((x[i] - B[index_max[i], ] %*% beta_x)^2 + (y[i] - B[index_max[i], ] %*% beta_y)^2)/ (2 * sigma)
-}
-print(log_likelihood)
+  likelihood_temp = 0
+  for(k in 1 : K){
+    likelihood_temp = likelihood_temp + PI_sum_new[k] * 1 / sigma_new ^ exp(-1/(2 *     sigma_new) ^ ((x[i] - B[k, ] %*% beta_x_new ) + (y[i] - B[k, ] %*% beta_y_new)^2 ))
+  }
+  likelihood = likelihood * likelihood_temp
 }
 
+PI_sum_old = PI_sum_new
+sigma_old = sigma_new
+beta_x_old = beta_x_new
+beta_y_old = beta_y_new
 
+print(log(likelihood))
+  likelihood_store = c(likelihood_store, likelihood)
+}
+
+plot(B %*% beta_x_new, B %*% beta_y_new)
+plot(x,y)
 ```
 
 
