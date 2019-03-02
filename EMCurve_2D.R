@@ -52,15 +52,40 @@ for(k in 1 : K){
   z = c(z, Z[k] + rnorm(N / K, 0, 0.1))
 }
 
+x = x - min(0, min(x))
+y = y - min(0, min(y))
+
+x = x / max(abs(x))
+y = y/ max(abs(y))
 plot(x,y)
 
+###################################################################
+################## The parameters to be tuned #####################
+###################################################################
+## Number of nodes 
+N = length(x)
+K = 50
 
-degree_free = 5
+## Degree of freedom for the splines
+degree_free = 20
+
+## Penalty coefficient
+lambda1 = 1
+lambda2 = 0
+
+## The position of the curve
+x_fix = c(0.4, 0.01)
+y_fix = c(0.4, 0.9)
+
+##################################################################
+##################################################################
+
+## Apply EM Algorithm to the image
 ## Basis for the spline
 w <- seq(0, 2 * pi, by = 2 * pi / K)[1 : K]
 B = cbind(1, bs(w, df = degree_free))
 B_der = cbind(0, dbs(w, df = degree_free))
-
+B_tilde = B[c(1, nrow(B)), ]
 
 
 ## PI is the matrix of p_ik
@@ -76,25 +101,32 @@ beta_y_old = runif(degree_free + 1, -5, 5)
 
 likelihood_store = c()
 
-
-# length_penalty = 0
-# for(k in 1 : K){
-#   length_penalty = length_penalty + B_der[k, ] %*% t(B_der[k, ]) 
-# }
-# length_penalty = length_penalty / K * 2 * pi
-
 length_penalty = t(B_der) %*% B_der / K * 2 * pi 
 
 
 ## The procedure of the EM-Algorithm
 for(t in 1 : 1000){
   ## E-step
-  for(i in 1 : N){
-    for(k in 1 : K){
-      PI[i,k] = exp(-1 / (2 * sigma_old) * ((x[i] - B[k, ] %*% beta_x_old) ^ 2 + (y[i] - B[k, ] %*% beta_y_old)^ 2)) * PI_sum_old[k]
-    }
-    PI = PI / apply(PI, 1, sum)
-  }
+  # for(i in 1 : N){
+  #   for(k in 1 : K){
+  #     PI[i,k] = exp(-1 / (2 * sigma_old) * ((x[i] - B[k, ] %*% beta_x_old) ^ 2 + (y[i] - B[k, ] %*% beta_y_old)^ 2)) * PI_sum_old[k]
+  #   }
+  #   PI = PI / apply(PI, 1, sum)
+  # }
+  
+  
+  
+  ## items used during the EM procedure
+  x.i.matrix = matrix(x,nrow=length(x),ncol=K,byrow=FALSE)
+  x.k.matrix = matrix(B %*% beta_x_old, nrow = N, ncol = length(B %*% beta_x_old), byrow = TRUE)
+  y.i.matrix = matrix(y,nrow = length(y), ncol = K, byrow = FALSE)
+  y.k.matrix = matrix(B %*% beta_y_old, nrow = N, ncol = length(B %*% beta_y_old), byrow = TRUE)
+  
+  ## E-step
+  PI = exp(-1 / as.numeric((2 * sigma_old)) * ((x.i.matrix - x.k.matrix) ^ 2 + (y.i.matrix - y.k.matrix)^ 2)) %*% diag(PI_sum_old)
+  PI = PI / apply(PI, 1, sum)
+  
+  
   
   ## M-step
   ## Update PI_sum
@@ -102,31 +134,46 @@ for(t in 1 : 1000){
   
   ## Update sigma
   sigma_temp = 0
-  for(i in 1 : N){
-    for(k in 1 : K){
-      sigma_temp = sigma_temp + ((x[i] - B[k, ] %*% beta_x_old)^2 + (y[i] - B[k, ] %*% beta_y_old)^2) * PI[i,k]
-    }
-  }
-  sigma_new = sigma_temp / (2 * N)
+  sigma_temp = sum(((x.i.matrix - x.k.matrix)^2 + (y.i.matrix - y.k.matrix)^2 ) * PI)
+  sigma_new =  sigma_temp / (2 * N)
+  
   
   ## Update beta_x and beta_y
   B_XX = 0
   B_YY = 0
+  B_ZZ = 0
   B_XY = 0
-
+  
   for(i in 1 : N){
-    B_XY = B_XY + t(B) %*% diag(PI[i, ]) %*% B
+    #B_XY = B_XY + t(B) %*% diag(PI[i, ]) %*% B
     B_XX = B_XX + t(B) %*% as.matrix(PI[i, ]) * x[i] 
-    B_YY = B_YY + t(B)  %*% as.matrix(PI[i, ]) * y[i]
-    #for(k in 1 : K){
-      #B_XY = B_XY + as.matrix(B[k, ]) %*% t(as.matrix(B[k, ])) * PI[i, k]
-      #B_XX = B_XX + as.matrix(B[k, ]) * x[i] * PI[i, k]
-      #B_YY = B_YY + as.matrix(B[k, ]) * y[i] * PI[i, k]
-    #}
+    B_YY = B_YY + t(B) %*% as.matrix(PI[i, ]) * y[i]
   }
   
-   beta_x_new  = solve(B_XY + 1.5 * length_penalty + 2 * diag(degree_free + 1)) %*% B_XX
-   beta_y_new  = solve(B_XY + 1.5 * length_penalty + 2 * diag(degree_free + 1)) %*% B_YY
+  diag_B = apply(PI, 2, sum) %>% diag
+  B_XY = t(B) %*% diag_B %*% B
+  #B_XX = apply(t(B) %*% (t(PI) %*% diag(x)), 1, sum)
+  
+  
+  
+  ## Inverse matrix for the estimation
+  Inverse_M = solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1))
+  
+  beta_x_new  = Inverse_M %*% B_XX
+  beta_y_new  = Inverse_M %*% B_YY
+  
+  ## Psu-inverse matrix for the estimation of coefficient
+  
+  Inverse_P = Inverse_M %*% t(B_tilde) %*% 
+    solve(B_tilde %*% Inverse_M %*% t(B_tilde))
+  
+  beta_x_new = beta_x_new - 
+    Inverse_P %*%
+    (B_tilde %*% beta_x_new - x_fix)
+  
+  beta_y_new = beta_y_new - 
+    Inverse_P %*%
+    (B_tilde %*% beta_y_new - y_fix)
   
   # ## CVXR method to do the estimation
   # beta_x_cvx = Variable(degree_free + 1)
@@ -184,21 +231,24 @@ for(t in 1 : 1000){
   
   print(likelihood)
   likelihood_store = c(likelihood_store, likelihood)
-
-
-## Save the runing result 
-#curve = list(X.fit = B %*% beta_x_new, Y.fit = B %*% beta_y_new, x = x, y = y)
-
-if(t %% 10 == 0){
-  plot(x,y)
-  lines(B %*% beta_x_new, B %*% beta_y_new, type = "l", col = "red")
-}
-
+  
+  
+  ## Save the runing result 
+  #curve = list(X.fit = B %*% beta_x_new, Y.fit = B %*% beta_y_new, x = x, y = y)
+  
+  if(t %% 10 == 0){
+    plot(x,y, xlim = c(0,1), ylim = c(0,1))
+    lines(B %*% beta_x_new, B %*% beta_y_new, type = "l", col = "red")
+  }
+  
 }
 dat = list(x = x, y = y)
 #saveRDS(dat, "data.rds")
 
 
+
+plot(x,y, xlim = c(0,1), ylim = c(0,1))
+lines(B %*% beta_x_new, B %*% beta_y_new, type = "l", col = "red")
 
 
 
