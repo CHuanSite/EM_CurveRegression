@@ -1,25 +1,30 @@
+## Number used:
+## fit22: Number 0
+## fig15: Number 1
+## fit26: Number 2
+## fit45: Number 3
+## fig700: Number 5
+## fit19: Number 6
+## fig16: Number 7
+## fit20: Number 9
+
+
+
 ## Load in the packages
 library(keras)
 library(tidyverse)
 
+
 ## Load in the mnist dataset
 mnist <- dataset_mnist()
 train <- mnist$train$x
-image <- train[50, , ]
+image <- train[45, , ]
+
 
 index = which(image > 0, arr.ind = TRUE)
 
-## Parameters to do the standardization
-# x.mean = mean(index[, 1])
-# x.sd = mean(index[, 1])
-# y.mean = mean(index[, 2])
-# y.sd = mean(index[, 2])
-# x = scale(index[, 2]) %>% as.vector
-# y = scale(index[, 1]) %>% as.vector
-# 
 x = (index[, 2] %>% as.vector) / 28
-y = (index[, 1] %>% as.vector) / 28
-#plot(x.index, y.index)
+y = 1 - (index[, 1] %>% as.vector) / 28
 
 
 ###################################################################
@@ -30,15 +35,15 @@ N = length(x)
 K = 50
 
 ## Degree of freedom for the splines
-degree_free = 10
+degree_free = 20
 
 ## Penalty coefficient
 lambda1 = 0.1
 lambda2 = 0
 
 ## The position of the curve
-x_fix = c(0.25, 0.8)
-y_fix = c(0.8, 0.3)
+x_fix = c(0.42, 0.27)
+y_fix = c(0.1, 0.7)
 
 ##################################################################
 ##################################################################
@@ -64,25 +69,32 @@ beta_y_old = runif(degree_free + 1, -5, 5)
 
 likelihood_store = c()
 
-
-# length_penalty = 0
-# for(k in 1 : K){
-#   length_penalty = length_penalty + B_der[k, ] %*% t(B_der[k, ]) 
-# }
-# length_penalty = length_penalty / K * 2 * pi
-
 length_penalty = t(B_der) %*% B_der / K * 2 * pi 
 
 
 ## The procedure of the EM-Algorithm
 for(t in 1 : 1000){
   ## E-step
-  for(i in 1 : N){
-    for(k in 1 : K){
-      PI[i,k] = exp(-1 / (2 * sigma_old) * ((x[i] - B[k, ] %*% beta_x_old) ^ 2 + (y[i] - B[k, ] %*% beta_y_old)^ 2)) * PI_sum_old[k]
-    }
-    PI = PI / apply(PI, 1, sum)
-  }
+  # for(i in 1 : N){
+  #   for(k in 1 : K){
+  #     PI[i,k] = exp(-1 / (2 * sigma_old) * ((x[i] - B[k, ] %*% beta_x_old) ^ 2 + (y[i] - B[k, ] %*% beta_y_old)^ 2)) * PI_sum_old[k]
+  #   }
+  #   PI = PI / apply(PI, 1, sum)
+  # }
+  
+  
+  
+  ## items used during the EM procedure
+  x.i.matrix = matrix(x,nrow=length(x),ncol=K,byrow=FALSE)
+  x.k.matrix = matrix(B %*% beta_x_old, nrow = N, ncol = length(B %*% beta_x_old), byrow = TRUE)
+  y.i.matrix = matrix(y,nrow = length(y), ncol = K, byrow = FALSE)
+  y.k.matrix = matrix(B %*% beta_y_old, nrow = N, ncol = length(B %*% beta_y_old), byrow = TRUE)
+
+  ## E-step
+  PI = exp(-1 / as.numeric((2 * sigma_old)) * ((x.i.matrix - x.k.matrix) ^ 2 + (y.i.matrix - y.k.matrix)^ 2)) %*% diag(PI_sum_old)
+  PI = PI / apply(PI, 1, sum)
+  
+  
   
   ## M-step
   ## Update PI_sum
@@ -90,43 +102,46 @@ for(t in 1 : 1000){
   
   ## Update sigma
   sigma_temp = 0
-  for(i in 1 : N){
-    for(k in 1 : K){
-      sigma_temp = sigma_temp + ((x[i] - B[k, ] %*% beta_x_old)^2 + (y[i] - B[k, ] %*% beta_y_old)^2) * PI[i,k]
-    }
-  }
-  sigma_new = sigma_temp / (2 * N)
+  sigma_temp = sum(((x.i.matrix - x.k.matrix)^2 + (y.i.matrix - y.k.matrix)^2 ) * PI)
+  sigma_new =  sigma_temp / (2 * N)
+  
   
   ## Update beta_x and beta_y
   B_XX = 0
   B_YY = 0
+  B_ZZ = 0
   B_XY = 0
   
   for(i in 1 : N){
-    B_XY = B_XY + t(B) %*% diag(PI[i, ]) %*% B
+    #B_XY = B_XY + t(B) %*% diag(PI[i, ]) %*% B
     B_XX = B_XX + t(B) %*% as.matrix(PI[i, ]) * x[i] 
-    B_YY = B_YY + t(B)  %*% as.matrix(PI[i, ]) * y[i]
-    #for(k in 1 : K){
-    #B_XY = B_XY + as.matrix(B[k, ]) %*% t(as.matrix(B[k, ])) * PI[i, k]
-    #B_XX = B_XX + as.matrix(B[k, ]) * x[i] * PI[i, k]
-    #B_YY = B_YY + as.matrix(B[k, ]) * y[i] * PI[i, k]
-    #}
+    B_YY = B_YY + t(B) %*% as.matrix(PI[i, ]) * y[i]
   }
-  ## Penalized beta_x and beta_y
-  beta_x_new  = solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1)) %*% B_XX
-  beta_y_new  = solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1)) %*% B_YY
   
-  ## Fixed points beta_x and beta_y
+  diag_B = apply(PI, 2, sum) %>% diag
+  B_XY = t(B) %*% diag_B %*% B
+  #B_XX = apply(t(B) %*% (t(PI) %*% diag(x)), 1, sum)
+  
+  
+  
+  ## Inverse matrix for the estimation
+  Inverse_M = solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1))
+  
+  beta_x_new  = Inverse_M %*% B_XX
+  beta_y_new  = Inverse_M %*% B_YY
+
+  ## Psu-inverse matrix for the estimation of coefficient
+  
+  Inverse_P = Inverse_M %*% t(B_tilde) %*% 
+    solve(B_tilde %*% Inverse_M %*% t(B_tilde))
+  
   beta_x_new = beta_x_new - 
-    solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1)) %*% t(B_tilde) %*% 
-    solve(B_tilde %*% solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1)) %*% t(B_tilde)) %*%
+    Inverse_P %*%
     (B_tilde %*% beta_x_new - x_fix)
   
   beta_y_new = beta_y_new - 
-    solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1)) %*% t(B_tilde) %*% 
-    solve(B_tilde %*% solve(B_XY + lambda1 * length_penalty + lambda2 * diag(degree_free + 1)) %*% t(B_tilde)) %*%
+    Inverse_P %*%
     (B_tilde %*% beta_y_new - y_fix)
-  
   
   # ## CVXR method to do the estimation
   # beta_x_cvx = Variable(degree_free + 1)
