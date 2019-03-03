@@ -9,7 +9,7 @@ library(splines2)
 ## Read into image
 img <- readANALYZE("/Users/chenhuan/Documents/桌面整理/签证/JHU/Research/EM_CurveRegression/EM_CurveRegression/tempFile.img")
 
-index = which(img@.Data > 100, arr.ind = TRUE)
+index = which(img@.Data > 50, arr.ind = TRUE)
 x = index[, 1] %>% as.vector
 y = index[, 2] %>% as.vector
 z = index[, 3] %>% as.vector
@@ -29,7 +29,7 @@ N = length(x)
 K = 200
 
 ## Degree of freedom for the splines
-degree_free = 30
+degree_free = 20
 
 ## Penalty coefficient
 lambda1 = 1.5
@@ -165,7 +165,7 @@ for(t in 1 : 1000){
     z.fit = B %*% beta_z_new
     plot_ly() %>%
       add_trace(x = x, y = y, z = z, type = "scatter3d", mode = "markers", name = 'points', marker = list(size = 1, color = 'rgba(0, 0, 0, .9)', opacity = 0.4)) %>%
-      add_trace(x = as.vector(x.fit), y = as.vector(y.fit), z = as.vector(z.fit), type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 2, color = 'rgba(255, 0, 0, .9)'))
+      add_trace(x = as.vector(x.fit), y = as.vector(y.fit), z = as.vector(z.fit), type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = 'rgba(255, 0, 0, .9)'))
     # par(mfrow = c(1,2))
     # scatter3D(x, y, z)
     # scatter3D(B %*% beta_x_new, B %*% beta_y_new, B %*% beta_z_new)
