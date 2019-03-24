@@ -9,7 +9,7 @@ library(splines2)
 ## Read into image
 img <- readANALYZE("/Users/chenhuan/Documents/桌面整理/签证/JHU/Research/EM_CurveRegression/EM_CurveRegression/tempFile.img")
 
-index = which(img@.Data > 50, arr.ind = TRUE)
+index = which(img@.Data > 500, arr.ind = TRUE)
 x = index[, 1] %>% as.vector
 y = index[, 2] %>% as.vector
 z = index[, 3] %>% as.vector
@@ -32,7 +32,7 @@ K = 200
 degree_free = 20
 
 ## Penalty coefficient
-lambda1 = 8
+lambda1 = 10
 lambda2 = 0
 
 ## The position of the curve
@@ -83,9 +83,10 @@ for(t in 1 : 1000){
   
   
   ## E-step
-  PI = exp(-1 / as.numeric((2 * sigma_old)) * ((x.i.matrix - x.k.matrix) ^ 2 + (y.i.matrix - y.k.matrix)^ 2 + (z.i.matrix - z.k.matrix)^ 2)) %*% diag(PI_sum_old)
+  sigma_matrix = matrix(sigma_old, nrow = N, ncol = K)
+  PI = 1 / sigma_matrix ^ (3/2) *  exp(-1 / as.numeric((2 * sigma_matrix)) * ((x.i.matrix - x.k.matrix) ^ 2 + (y.i.matrix - y.k.matrix)^ 2 + (z.i.matrix - z.k.matrix)^ 2)) %*% diag(PI_sum_old)
   PI = PI / apply(PI, 1, sum)
-
+  
   
   ## M-step
   ## Update PI_sum
@@ -93,8 +94,11 @@ for(t in 1 : 1000){
   
   ## Update sigma
   sigma_temp = 0
-  sigma_temp = sum(((x.i.matrix - x.k.matrix)^2 + (y.i.matrix - y.k.matrix)^2 + (z.i.matrix - z.k.matrix)^2) * PI)
-  sigma_new = 1 * sigma_temp / (3 * N)
+  sigma_temp = apply(((x.i.matrix - x.k.matrix)^2 + (y.i.matrix - y.k.matrix)^2 +  (z.i.matrix - z.k.matrix)^2) * PI, 2, sum)
+  sigma_new = 1  / (3 * apply(PI, 2, sum)) * sigma_temp 
+  
+  ## PI matrix after adjusting for the variance component
+  PI_reg = PI / matrix(sigma_temp, nrow = N, ncol = K)
   
   ## Update beta_x and beta_y
   B_XX = 0
@@ -104,12 +108,12 @@ for(t in 1 : 1000){
   
   for(i in 1 : N){
     #B_XY = B_XY + t(B) %*% diag(PI[i, ]) %*% B
-    B_XX = B_XX + t(B) %*% as.matrix(PI[i, ]) * x[i] 
-    B_YY = B_YY + t(B) %*% as.matrix(PI[i, ]) * y[i]
-    B_ZZ = B_ZZ + t(B) %*% as.matrix(PI[i, ]) * z[i] 
+    B_XX = B_XX + t(B) %*% as.matrix(PI_reg[i, ]) * x[i] 
+    B_YY = B_YY + t(B) %*% as.matrix(PI_reg[i, ]) * y[i]
+    B_ZZ = B_ZZ + t(B) %*% as.matrix(PI_reg[i, ]) * z[i] 
   }
   
-  diag_B = apply(PI, 2, sum) %>% diag
+  diag_B = apply(PI_reg, 2, sum) %>% diag
   B_XY = t(B) %*% diag_B %*% B
   #B_XX = apply(t(B) %*% (t(PI) %*% diag(x)), 1, sum)
   
@@ -148,14 +152,14 @@ for(t in 1 : 1000){
   #   }
   #   likelihood = likelihood +  log(likelihood_temp)
   # }
-
+  
   PI_sum_old = PI_sum_new
   sigma_old = sigma_new
   beta_x_old = beta_x_new
   beta_y_old = beta_y_new
   beta_z_old = beta_z_new
   
-   print(t)
+  print(t)
   # likelihood_store = c(likelihood_store, likelihood)
   
   
@@ -174,6 +178,7 @@ for(t in 1 : 1000){
     # par(mfrow = c(1,2))
     # scatter3D(x, y, z)
     # scatter3D(B %*% beta_x_new, B %*% beta_y_new, B %*% beta_z_new)
+    print(x.fit)
   }
   
 }
