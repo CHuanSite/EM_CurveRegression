@@ -5,11 +5,15 @@ library(tidyverse)
 library(plotly)
 library(splines)
 library(splines2)
+library(pracma)
 
 ## Read into image
-img <- readANALYZE("/Users/chenhuan/Documents/桌面整理/签证/JHU/Research/EM_CurveRegression/EM_CurveRegression/tempFile.img")
 
-index = which(img@.Data > 50, arr.ind = TRUE)
+#img <- readANALYZE("/Users/chenhuan/Documents/桌面整理/签证/JHU/Research/EM_CurveRegression/EM_CurveRegression/tempFile")
+img <- readANALYZE("/Users/chenhuan/Documents/桌面整理/签证/JHU/Research/EM_CurveRegression/EM_CurveRegression/tempFile.img")
+#img <- readANALYZE("/Users/chenhuan/Documents/桌面整理/签证/JHU/Research/EM_CurveRegression/Data/J005_productB_11618_1100_ECTHd1_IRAC001_DS.img")
+
+index = which(img@.Data > 100, arr.ind = TRUE)
 x = index[, 1] %>% as.vector
 y = index[, 2] %>% as.vector
 z = index[, 3] %>% as.vector
@@ -26,23 +30,23 @@ z = z / 128
 ###################################################################
 ## Number of nodes 
 N = length(x)
-K = 200
+K = 100
 
 ## Degree of freedom for the splines
 degree_free = 20
 
 ## Penalty coefficient
-lambda1 = 8
+lambda1 = 1000000
 lambda2 = 0
 
 ## The position of the curve
-#x_fix = c(0.35, 0.60)
-#y_fix = c(0.62, 0.57)
-#z_fix = c(0.14, 0.82)
+x_fix = c(0.35, 0.60)
+y_fix = c(0.62, 0.57)
+z_fix = c(0.14, 0.82)
 
-x_fix = c(0.35, 0.58)
-y_fix = c(0.62, 0.48)
-z_fix = c(0.14, 0.84)
+# x_fix = c(0.35, 0.58)
+# y_fix = c(0.62, 0.48)
+# z_fix = c(0.14, 0.84)
 
 
 ##################################################################
@@ -72,7 +76,7 @@ likelihood_store = c()
 length_penalty = t(B_der) %*% B_der / K * 2 * pi 
 
 ## The procedure of the EM-Algorithm
-for(t in 1 : 1000){
+for(t in 1 : 100){
   ## items used during the EM procedure
   x.i.matrix = matrix(x,nrow=length(x),ncol=K,byrow=FALSE)
   x.k.matrix = matrix(B %*% beta_x_old, nrow = N, ncol = length(B %*% beta_x_old), byrow = TRUE)
@@ -155,7 +159,7 @@ for(t in 1 : 1000){
   beta_y_old = beta_y_new
   beta_z_old = beta_z_new
   
-   print(t)
+  print(t)
   # likelihood_store = c(likelihood_store, likelihood)
   
   
@@ -177,7 +181,71 @@ for(t in 1 : 1000){
   }
   
 }
-dat = list(x = x, y = y)
+## Plot the Principal for the Colon Image
+plot_ly() %>%
+  add_trace(x = x, y = y, z = z, type = "scatter3d", mode = "markers", name = 'points', marker = list(size = 1, color = 'rgba(0, 0, 0, .9)', opacity = 0.4)) %>%
+  add_trace(x = as.vector(x.fit), y = as.vector(y.fit), z = as.vector(z.fit), type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = 'rgba(255, 0, 0, .9)'))
+
+dat = list(x = x, y = y, z = z)
 
 
+## Plot the fitted tube for the Colon Image
+
+## Function to plot the curve after giving mu, sigma, d, n_dir 
+Circle_Plot <- function(mu, sigma, d, n_dir){
+  ## mu: The mean of the multivariate normal distribuiton
+  ## sigma: The covariance matrix of the multivariate normal distribution
+  ## d: The radius of the ellipse
+  ## n_dir: The orthogonal direction of the plane
+  
+  theta = seq(from =  0, to = pi, by = 0.01)
+  
+  ## The direction of the orthogonal vector after transformation
+  abc = n_dir %*% sqrtm(sigma)$B
+  a = abc[1]
+  b = abc[2]
+  c = abc[3]
+  
+  ## The coordinate of x,y,z after making transformation
+  x_1 = d * cos(theta)
+  x_2 = d * cos(theta)
+  if(b == 0){
+    z_1 = -1 * a * x_1 / c
+    y_1 = sqrt(d^2 - x_1 ^ 2 - z_1 ^ 2)
+    z_2 = -1 * a * x_2 / c
+    y_2 = sqrt(d^2 - x_2 ^ 2 - z_2 ^ 2)
+  }else{
+    
+    temp_d = a^2 * d^2 * cos(theta)^2 / b^2 - d^2 * sin(theta)^2
+    
+    z_1 = -1 * (2 * a * c * d * cos(theta) / b^2 + 2 * sqrt(a^2 *c^2 * d^2 * cos(theta)^2 / b^4 - (c^2 / b^2 + 1) * temp_d)) / (2 * c^2 / b^2 + 2)
+    y_1 = -1 * (a * d * cos(theta) + c * z_1) / b
+    
+    z_2 = -1 * (2 * a * c * d * cos(theta) / b^2 - 2 * sqrt(a^2 *c^2 * d^2 * cos(theta)^2 / b^4 - (c^2 / b^2 + 1) * temp_d)) / (2 * c^2 / b^2 + 2)
+    y_2 = -1 * (a * d * cos(theta) + c * z_2) / b
+  }
+  
+  ## The coordinate of the two half ellipses
+  coordinateOriginal_1 = t(na.omit(t(mu +sqrtm(sigma)$B %*% rbind(x_1, y_1, z_1))))
+  coordinateOriginal_2 = t(na.omit(t(mu +sqrtm(sigma)$B %*% rbind(x_2, y_2, z_2))))
+  coordinateOriginal =  cbind(coordinateOriginal_2, coordinateOriginal_1[, ncol(coordinateOriginal_1) : 1], coordinateOriginal_2 )
+  
+  return(coordinateOriginal)
+}
+
+plt_store = 
+  plot_ly() %>%
+  add_trace(x = x, y = y, z = z, type = "scatter3d", mode = "markers", name = 'points', marker = list(size = 1, color = 'rgba(0, 0, 0, .9)', opacity = 0.4)) %>%
+  add_trace(x = as.vector(x.fit), y = as.vector(y.fit), z = as.vector(z.fit), type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = 'rgba(255, 0, 0, .9)'))
+
+for(i in 1 : 500){
+  m = Circle_Plot(c(x.fit[i],y.fit[i],z.fit[i]), sigma_old^2 * diag(3), 60, c(B_der[i, ] %*%beta_x_new,B_der[i, ] %*%beta_y_new, B_der[i, ] %*%beta_z_new))
+  plt_store = plt_store %>% add_trace(x = m[1, ], y = m[2, ], z = m[3, ], type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = paste0('rgba(', 0.5 * i,', 0, 0, .9)')))
+
+}
+plt_store %>% layout(showlegend = FALSE)
+
+
+plot_ly() %>%
+  add_trace(x = m[1, ], y = m[2, ], z = m[3, ], type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = 'rgba(255, 0, 0, .9)'))
 

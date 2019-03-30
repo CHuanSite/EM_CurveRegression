@@ -1,3 +1,13 @@
+##################################
+#
+#
+# Author: Huan Chen
+# Data: 03/29/2019
+#
+#
+###################################
+
+
 ## load the packages 
 library(oro.nifti)
 library(keras)
@@ -292,12 +302,26 @@ plt_store =
   add_trace(x = x, y = y, z = z, type = "scatter3d", mode = "markers", name = 'points', marker = list(size = 1, color = 'rgba(0, 0, 0, .9)', opacity = 0.4)) %>%
   add_trace(x = as.vector(x.fit), y = as.vector(y.fit), z = as.vector(z.fit), type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = 'rgba(255, 0, 0, .9)'))
 
-for(i in 1 : 200){
+for(i in 1 : 500){
   m = Circle_Plot(c(x.fit[i],y.fit[i],z.fit[i]), diag(c(sigma_new_x[i], sigma_new_y[i], sigma_new_z[i])), 1.4, c(B_der[i, ] %*%beta_x_new,B_der[i, ] %*%beta_y_new, B_der[i, ] %*%beta_z_new))
-  plt_store = plt_store %>% add_trace(x = m[1, ], y = m[2, ], z = m[3, ], type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = paste0('rgba(',  1 * i,', 0, 0, .9)')))
+  plt_store = plt_store %>% add_trace(x = m[1, ], y = m[2, ], z = m[3, ], type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = paste0('rgba(',  0.5 * i,', 0, 0, .9)')))
   
 }
 plt_store %>% layout(showlegend = FALSE)
+
+
+curve_length = sqrt((B_der %*% beta_x_new)^2 + (B_der %*% beta_y_new)^2 + (B_der %*% beta_z_new)^2)
+for(k in 2 : length(curve_length)){
+  curve_length[k] = curve_length[k - 1] + curve_length[k]
+}
+curve_length = curve_length * 2 * pi / length(curve_length)
+
+plotly(curve_length, sigma_new_x + sigma_new_y + sigma_new_z, 
+     xlab = "Length", ylab = "Variance", 
+     type = "l", main = "Concentration along the curve")
+
+
+
 
 
 

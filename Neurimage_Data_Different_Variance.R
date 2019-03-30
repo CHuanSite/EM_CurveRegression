@@ -9,7 +9,7 @@ library(splines2)
 ## Read into image
 img <- readANALYZE("/Users/chenhuan/Documents/桌面整理/签证/JHU/Research/EM_CurveRegression/EM_CurveRegression/tempFile.img")
 
-index = which(img@.Data > 500, arr.ind = TRUE)
+index = which(img@.Data > 100, arr.ind = TRUE)
 x = index[, 1] %>% as.vector
 y = index[, 2] %>% as.vector
 z = index[, 3] %>% as.vector
@@ -26,24 +26,28 @@ z = z / 128
 ###################################################################
 ## Number of nodes 
 N = length(x)
-K = 200
+K = 500
 
 ## Degree of freedom for the splines
-degree_free = 20
+degree_free = 5
 
 ## Penalty coefficient
-lambda1 = 10
-lambda2 = 0
+lambda1 = 6
+lambda2 = 0.001
 
 ## The position of the curve
 #x_fix = c(0.35, 0.60)
 #y_fix = c(0.62, 0.57)
 #z_fix = c(0.14, 0.82)
 
-x_fix = c(0.35, 0.58)
-y_fix = c(0.62, 0.48)
-z_fix = c(0.14, 0.84)
+x_fix = c(0.35, 0.57)
+y_fix = c(0.62, 0.54)
+z_fix = c(0.14, 0.83)
 
+alpha = 2
+beta = 0.0001
+
+T = 200
 
 ##################################################################
 ##################################################################
@@ -72,7 +76,8 @@ likelihood_store = c()
 length_penalty = t(B_der) %*% B_der / K * 2 * pi 
 
 ## The procedure of the EM-Algorithm
-for(t in 1 : 1000){
+for(t in 1 : T){
+  
   ## items used during the EM procedure
   x.i.matrix = matrix(x,nrow=length(x),ncol=K,byrow=FALSE)
   x.k.matrix = matrix(B %*% beta_x_old, nrow = N, ncol = length(B %*% beta_x_old), byrow = TRUE)
@@ -83,9 +88,12 @@ for(t in 1 : 1000){
   
   
   ## E-step
-  sigma_matrix = matrix(sigma_old, nrow = N, ncol = K)
-  PI = 1 / sigma_matrix ^ (3/2) *  exp(-1 / as.numeric((2 * sigma_matrix)) * ((x.i.matrix - x.k.matrix) ^ 2 + (y.i.matrix - y.k.matrix)^ 2 + (z.i.matrix - z.k.matrix)^ 2)) %*% diag(PI_sum_old)
-  PI = PI / apply(PI, 1, sum)
+  sigma_matrix = matrix(sigma_old, nrow = N, ncol = K, byrow = TRUE)
+  #PI = (1 / sigma_matrix^(3/2) *  exp(-1 / (2 * sigma_matrix) * ((x.i.matrix - x.k.matrix) ^ 2 + (y.i.matrix - y.k.matrix)^ 2 + (z.i.matrix - z.k.matrix)^ 2))) %*% diag(PI_sum_old)
+  
+  PI_log =  1 -3 / 2 * log(sigma_matrix) - 1 / (2 * sigma_matrix) * ((x.i.matrix - x.k.matrix) ^ 2 + (y.i.matrix - y.k.matrix)^ 2 + (z.i.matrix - z.k.matrix)^ 2)  +  matrix(log(PI_sum_old), nrow = N, ncol = length(B %*% beta_z_old), byrow = TRUE)
+
+  PI = exp(PI_log) / apply(exp(PI_log), 1, sum)
   
   
   ## M-step
@@ -93,13 +101,14 @@ for(t in 1 : 1000){
   PI_sum_new = 1 / N * apply(PI, 2, sum)
   
   ## Update sigma
-  sigma_temp = 0
   sigma_temp = apply(((x.i.matrix - x.k.matrix)^2 + (y.i.matrix - y.k.matrix)^2 +  (z.i.matrix - z.k.matrix)^2) * PI, 2, sum)
-  sigma_new = 1  / (3 * apply(PI, 2, sum)) * sigma_temp 
+  #sigma_new = (1/2 * sigma_temp + beta) / (3 * apply(PI, 2, sum) / 2 + alpha + 1) 
+  sigma_new = (sigma_temp) / (3 * apply(PI, 2, sum))
+  # sigma_new = exp(log(sigma_temp) - log(3) - log(apply(PI, 2, sum)))
   
   ## PI matrix after adjusting for the variance component
-  PI_reg = PI / matrix(sigma_temp, nrow = N, ncol = K)
-  
+  #PI_reg = PI / matrix(sigma_new, nrow = N, ncol = K, byrow = TRUE)
+  PI_reg = PI
   ## Update beta_x and beta_y
   B_XX = 0
   B_YY = 0
@@ -178,11 +187,25 @@ for(t in 1 : 1000){
     # par(mfrow = c(1,2))
     # scatter3D(x, y, z)
     # scatter3D(B %*% beta_x_new, B %*% beta_y_new, B %*% beta_z_new)
-    print(x.fit)
+    #print(x.fit)
+    
   }
+  print(sigma_new)
   
 }
 dat = list(x = x, y = y)
 
+## Plot the circle result
+plt_store = 
+  plot_ly() %>%
+  add_trace(x = x, y = y, z = z, type = "scatter3d", mode = "markers", name = 'points', marker = list(size = 1, color = 'rgba(0, 0, 0, .9)', opacity = 0.4)) %>%
+  add_trace(x = as.vector(x.fit), y = as.vector(y.fit), z = as.vector(z.fit), type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = 'rgba(255, 0, 0, .9)'))
+
+for(i in 1 : 500){
+  m = Circle_Plot(c(x.fit[i],y.fit[i],z.fit[i]), sigma_old[i] * diag(3), 1.5, c(B_der[i, ] %*%beta_x_new,B_der[i, ] %*%beta_y_new, B_der[i, ] %*%beta_z_new))
+  plt_store = plt_store %>% add_trace(x = m[1, ], y = m[2, ], z = m[3, ], type = "scatter3d", mode = "lines", name = "theoretical line", line = list(width = 5, color = paste0('rgba(', 4 * i,', 0, 0, .9)')))
+  
+}
+plt_store %>% layout(showlegend = FALSE)
 
 
